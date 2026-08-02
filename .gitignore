@@ -1,7 +1,46 @@
-*.exe
-*.dll
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+htmlcov/
+
+# Virtual environments / tooling
+.venv/
+venv/
+env/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# C / C++ build artifacts
 *.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.pdb
+*.idb
+*.pch
+*.sln
+*.vcxproj*
+
+# Compressed / installer artifacts
 *.7z
-__pycache__
-.venv
+*.zip
+*.tar
+*.tar.gz
+
+# Editor / OS
 .DS_Store
+Thumbs.db
+*.swp

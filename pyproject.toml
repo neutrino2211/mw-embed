@@ -1,0 +1,22 @@
+[project]
+name = "mw-embed"
+version = "0.1.0"
+description = "A malware embedder designed to create malware laden EXEs from a base EXE"
+requires-python = ">=3.9"
+dependencies = [
+    "pefile",
+    "iced-x86",
+]
+
+[project.scripts]
+embed = "embed:main"
+
+[tool.setuptools.packages.find]
+include = ["vendor*"]
+
+[tool.setuptools]
+py-modules = ["embed"]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
