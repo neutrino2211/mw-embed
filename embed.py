@@ -80,7 +80,9 @@ def build_proxy(real_payload_path, build_dir, cc, export_name="Trigger", console
     if console:
         console_init = '''#include <stdio.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <direct.h>
+#include <string.h>
 static void logf(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
@@ -94,8 +96,45 @@ static void init_console(void) {
     freopen("CONOUT$", "w", stderr);
     freopen("CONIN$", "r", stdin);
 }
+static void WINAPI ods_hookA(const char *s) { logf("[payload] %s\\n", s ? s : "(null)"); }
+static void WINAPI ods_hookW(const wchar_t *s) { logf("[payload] %ls\\n", s ? s : L"(null)"); }
+static void install_ods_hook(void) {
+    HMODULE k = GetModuleHandleA("kernel32.dll");
+    DWORD old;
+    if (!k) return;
+    BYTE *pa = (BYTE *)GetProcAddress(k, "OutputDebugStringA");
+    BYTE *pw = (BYTE *)GetProcAddress(k, "OutputDebugStringW");
+    if (pa) {
+        VirtualProtect(pa, 16, PAGE_EXECUTE_READWRITE, &old);
+#ifdef _WIN64
+        BYTE patch[12] = {0x48, 0xB8, 0,0,0,0,0,0,0,0, 0xFF, 0xE0};
+        *(uint64_t *)&patch[2] = (uint64_t)(uintptr_t)ods_hookA;
+        memcpy(pa, patch, 12);
+#else
+        BYTE patch[5] = {0xE9, 0,0,0,0};
+        *(int32_t *)&patch[1] = (int32_t)((BYTE *)ods_hookA - (pa + 5));
+        memcpy(pa, patch, 5);
+#endif
+        VirtualProtect(pa, 16, old, &old);
+        logf("[proxy] OutputDebugStringA hooked\\n");
+    }
+    if (pw) {
+        VirtualProtect(pw, 16, PAGE_EXECUTE_READWRITE, &old);
+#ifdef _WIN64
+        BYTE patch[12] = {0x48, 0xB8, 0,0,0,0,0,0,0,0, 0xFF, 0xE0};
+        *(uint64_t *)&patch[2] = (uint64_t)(uintptr_t)ods_hookW;
+        memcpy(pw, patch, 12);
+#else
+        BYTE patch[5] = {0xE9, 0,0,0,0};
+        *(int32_t *)&patch[1] = (int32_t)((BYTE *)ods_hookW - (pw + 5));
+        memcpy(pw, patch, 5);
+#endif
+        VirtualProtect(pw, 16, old, &old);
+        logf("[hook] OutputDebugStringW hooked\\n");
+    }
+}
 '''
-        call_init = "        init_console();\n"
+        call_init = "        init_console();\n        install_ods_hook();\n"
         load_code = f'''        HMODULE payload = LoadLibraryA("{real_name}");
         if (!payload) {{
             logf("[proxy] FAILED to load {real_name}: error 0x%08lx\\n", GetLastError());
