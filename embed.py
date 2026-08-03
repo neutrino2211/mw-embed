@@ -486,6 +486,10 @@ def main():
             check_machine_match(args.target, payload_dll, "payload DLL")
             print(f"[*] Real payload: {payload_dll}")
 
+            renamed = os.path.join(build_dir, "payload.dll")
+            shutil.copy2(payload_dll, renamed)
+            payload_dll = renamed
+
             proxy_dll = build_proxy(payload_dll, build_dir, cc)
             if not proxy_dll:
                 sys.exit(1)
