@@ -528,8 +528,15 @@ def main():
             reapply_signature(args.target, embedded)
 
         if args.no_sfx:
+            out_dir = os.path.dirname(os.path.abspath(output)) or os.getcwd()
             shutil.copy2(embedded, output)
             print(f"[+] Modified EXE -> {output}")
+            for src in sfx_dlls:
+                name = os.path.basename(src)
+                dst = os.path.join(out_dir, name)
+                if os.path.normpath(output) != os.path.normpath(dst):
+                    shutil.copy2(src, dst)
+                print(f"[+] {name} -> {dst}")
         else:
             if not build_sfx(embedded, sfx_dlls, output, build_dir, extra_files=extra_files):
                 sys.exit(1)
