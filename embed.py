@@ -9,6 +9,43 @@ import struct
 
 EMBED_DIR = os.path.dirname(os.path.abspath(__file__))
 
+PE_MACHINE_NAMES = {0x14C: "x86", 0x8664: "x64"}
+
+
+def pe_bits_hex(path):
+    with open(path, "rb") as f:
+        hdr = f.read(2)
+        if hdr != b"MZ":
+            return None
+        f.seek(0x3C)
+        pe_off = struct.unpack("<I", f.read(4))[0]
+        f.seek(pe_off + 4)
+        machine = struct.unpack("<H", f.read(2))[0]
+    return machine
+
+
+def pe_bits(path):
+    machine = pe_bits_hex(path)
+    if machine is None:
+        return None
+    return PE_MACHINE_NAMES.get(machine)
+
+
+def check_machine_match(target_path, dll_path, label):
+    target = pe_bits(target_path)
+    dll = pe_bits(dll_path)
+    if target is None:
+        print(f"[-] Could not parse target architecture: {target_path}")
+        sys.exit(1)
+    if dll is None:
+        print(f"[-] Could not parse {label} architecture: {dll_path}")
+        sys.exit(1)
+    if target != dll:
+        print(f"[-] Architecture mismatch: target is {target} but {label} is {dll}.")
+        print("[-] Loading this DLL would crash with 0xC000007B (invalid image format).")
+        print("[-] Rebuild the payload for the same bitness as the target.")
+        sys.exit(1)
+
 
 def target_cc(target_path):
     with open(target_path, "rb") as f:
@@ -427,7 +464,7 @@ def main():
         print("[-] Could not determine target bitness or find matching cross-compiler")
         sys.exit(1)
 
-    bits = "64" if "x86_64" in cc else "32"
+    bits = pe_bits(args.target)
     print(f"[*] Target: PE{bits} -> compiler: {cc}")
 
     output = args.output or os.path.splitext(args.target)[0] + "-embedded.exe"
@@ -446,11 +483,13 @@ def main():
             if not os.path.isfile(payload_dll):
                 print(f"[-] DLL not found: {payload_dll}")
                 sys.exit(1)
+            check_machine_match(args.target, payload_dll, "payload DLL")
             print(f"[*] Real payload: {payload_dll}")
 
             proxy_dll = build_proxy(payload_dll, build_dir, cc)
             if not proxy_dll:
                 sys.exit(1)
+            check_machine_match(args.target, proxy_dll, "proxy DLL")
 
             embed_name = "proxy.dll"
             sfx_dlls = [proxy_dll, payload_dll]
@@ -459,6 +498,7 @@ def main():
             if not os.path.isfile(payload_dll):
                 print(f"[-] DLL not found: {payload_dll}")
                 sys.exit(1)
+            check_machine_match(args.target, payload_dll, "payload DLL")
             print(f"[*] Using pre-built DLL: {payload_dll}")
 
             embed_name = "payload.dll"
@@ -469,6 +509,7 @@ def main():
             payload_dll = build_payload(args.payload, build_dir, cc)
             if not payload_dll:
                 sys.exit(1)
+            check_machine_match(args.target, payload_dll, "built payload DLL")
 
             embed_name = "payload.dll"
             sfx_dlls = [payload_dll]
